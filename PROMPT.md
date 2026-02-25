@@ -1,67 +1,127 @@
-You are a senior database systems engineer tasked with building a **real, educational database engine core in Java 21**, designed as an SDK that will later be consumed by a custom query language parser.
+# 🔥 AI IDE PROMPT — BUILD EXTENSIBLE CORE DATABASE ENGINE (JAVA 21)
+
+You are a senior database systems engineer.
+
+You are designing a **real, extensible embedded database engine core** in **Java 21**, without third-party libraries.
 
 This is NOT a serialization project.
-This is NOT a CSV clone.
-This must resemble a **real database engine architecture** at a simplified scale.
+This must architecturally resemble a real database engine.
+
+The output will later be consumed by a custom query parser and GUI.
 
 ---
 
-## 🔷 Project Context
-
-This is a university OOP project.
-Constraints:
+# 🔷 HARD CONSTRAINTS
 
 * Java 21
-* No third-party dependencies
+* No third-party libraries
 * Standard library only
-* Clean, production-style architecture
-* Extensible design (future parser + GUI)
-* Strong OOP usage
-* Clear separation of concerns
+* Clean OOP design
+* No god classes
+* No procedural dumping
+* Clear layering
+* Designed for extensibility
 
-The result must look like a lightweight embedded database engine similar in architectural spirit to SQLite (but vastly simplified).
+The final result must look like a small SDK.
 
 ---
 
-# 🔷 Core Requirements — ENGINE LEVEL
+# 🔷 DESIGN GOALS
 
-## 1️⃣ Page-Based Storage (MANDATORY)
+Build a **core database engine** that includes:
 
-DO NOT store rows sequentially using DataOutputStream append.
+* Page-based storage
+* Slotted page layout
+* Buffer manager
+* Disk manager
+* System catalog
+* CRUD operations
+* Basic transactions
+* Write-ahead logging (WAL)
+* Crash recovery (simplified)
+* Index abstraction with B+ tree skeleton
+* Clean API surface for future parser
 
-Instead:
+Single-threaded engine is acceptable.
 
-* Use fixed-size pages (e.g., 4KB per page)
-* Store pages inside a single `.db` file per database
-* Implement:
+---
 
-  * Page abstraction
+# 🔷 STORAGE LAYER (MANDATORY)
+
+## 1️⃣ Page-Based File Structure
+
+* Database stored in a single `.db` file
+* Fixed-size pages (e.g., 4096 bytes)
+* Each page has:
+
   * Page ID
-  * Page header (page type, number of slots, free space offset)
-  * Slotted page layout for variable-length records
+  * Page type
+  * Free space pointer
+  * Slot directory (for variable-length records)
 
-Records must:
+Use a **Slotted Page Layout**:
 
-* Be stored inside pages
-* Have record identifiers (RID = pageId + slotId)
-* Support variable-length fields
+* Records stored from bottom upward
+* Slot directory grows from top downward
+* Supports variable-length strings
+
+Implement:
+
+* Page (abstract)
+* SlottedPage
+* PageType enum
+* RID (pageId + slotId)
 
 ---
 
-## 2️⃣ Catalog & Metadata System
+## 2️⃣ Disk Manager
 
-Implement a system catalog that stores:
+Responsible for:
+
+* Reading pages from disk
+* Writing pages to disk
+* Allocating new pages
+* Managing page IDs
+
+No business logic here.
+
+---
+
+## 3️⃣ Buffer Manager
+
+* In-memory page cache
+* Map<PageId, Page>
+* Dirty page tracking
+* Flush mechanism
+* No need for full LRU (simple strategy acceptable)
+
+All engine operations must go through buffer manager.
+
+---
+
+# 🔷 CATALOG SYSTEM
+
+Implement system catalog stored in reserved pages.
+
+Catalog must persist:
 
 * Table metadata
-* Schema definitions
-* Root page of table
-* Root page of index (if exists)
+* Schema (columns, data types, constraints)
+* Root page ID of table
+* Root page ID of index
 
-This should be stored inside reserved pages in the database file.
+Classes:
+
+* Schema
+* Column
+* TableMetadata
+* CatalogManager
+
+Catalog must survive restart.
 
 ---
 
-## 3️⃣ Schema Model
+# 🔷 DATA TYPES
 
 Support:
 
@@ -69,178 +129,196 @@ Support:
 * FLOAT
 * BOOLEAN
 * STRING (variable-length)
-* NOT NULL
-* PRIMARY KEY
 
-Schema must be stored persistently in catalog pages.
+Include:
 
----
+* NOT NULL constraint
+* PRIMARY KEY metadata
 
-## 4️⃣ Record Operations (REAL ONES)
-
-Engine API must support:
-
-* createTable(name, schema)
-* insert(table, record)
-* update(table, rid, newValues)
-* delete(table, rid)
-* scan(table) → iterator
-* search(table, predicate)
-
-Delete should use tombstones initially.
+Primary key index must be supported via index layer.
 
 ---
 
-## 5️⃣ Basic Transaction & ACID (Lite but Real)
+# 🔷 TABLE & RECORD OPERATIONS
 
-Implement a minimal transaction manager:
+Expose clean SDK-level API:
 
-* BEGIN
-* COMMIT
-* ROLLBACK
+```java
+Database db = new Database("mydb");
+db.createTable("users", schema);
 
-ACID (simplified):
+Transaction tx = db.beginTransaction();
 
-Atomicity:
+RID rid = db.insert(tx, "users", record);
+db.update(tx, "users", rid, newValues);
+db.delete(tx, "users", rid);
 
-* Use a basic Write-Ahead Log (WAL file)
-* Log record before modifying page
-* On crash recovery, replay committed transactions only
+Iterator<Record> it = db.scan(tx, "users");
+List<Record> results = db.search(tx, "users", predicate);
 
-Durability:
+db.commit(tx);
+```
 
-* Flush WAL before commit completes
+Required operations:
+
+* createTable
+* insert
+* update
+* delete (tombstone allowed)
+* scan
+* search (linear scan acceptable initially)
+
+All operations must require a Transaction object.
+
+---
+
+# 🔷 TRANSACTION & ACID (Lite but Real)
+
+Implement:
+
+## Transaction Manager
+
+* beginTransaction()
+* commit()
+* rollback()
+
+## Write-Ahead Logging (WAL)
+
+* Separate `.wal` file
+* Log before modifying any page
+* Log must contain:
+
+  * Transaction ID
+  * Operation type
+  * Before image
+  * After image
+
+## Atomicity
+
+* On crash, replay committed transactions
+* Undo uncommitted transactions
+
+## Durability
+
+* WAL flushed before commit returns
 
 Isolation:
 
-* Simple single-threaded engine is acceptable
-* Document isolation assumption
+* Single-threaded engine acceptable
+* Document assumption
 
 Consistency:
 
 * Enforce schema constraints
-
-Do NOT overcomplicate concurrency. Single-threaded is fine.
-
----
-
-## 6️⃣ Index Structure (Lite but Real)
-
-Implement a simple index abstraction.
-
-Minimum acceptable:
-
-* B+ Tree skeleton implementation
-* Node class
-* Internal vs leaf nodes
-* Insert
-* Search
-
-It can be minimal but must be architecturally correct.
-
-Primary key should optionally use this index.
+* Enforce NOT NULL
+* Primary key uniqueness if index exists
 
 ---
 
-## 7️⃣ Buffer Layer
+# 🔷 INDEX LAYER (Lite but Architecturally Real)
 
 Implement:
 
-* PageCache / BufferManager
-* Load page into memory
-* Mark dirty pages
-* Flush to disk
+* Index interface
+* BPlusTree class (minimal but structurally correct)
+* Node abstraction
+* LeafNode
+* InternalNode
 
-No fancy LRU needed — simple Map-based caching is fine.
+Required:
 
----
+* insert(key, RID)
+* search(key)
 
-## 8️⃣ Layered Architecture (Very Important)
+Primary key should optionally use this index.
 
-Structure must follow:
-
-* storage/
-
-  * Page
-  * SlottedPage
-  * BufferManager
-  * DiskManager
-* catalog/
-
-  * Schema
-  * Column
-  * TableMetadata
-* transaction/
-
-  * Transaction
-  * LogManager
-  * RecoveryManager
-* index/
-
-  * BPlusTree
-  * Node
-* engine/
-
-  * Database
-  * Table
-* common/
-
-  * DataType
-  * RID
-
-Parser will interact ONLY with `Database` and `Table`.
-
-No file I/O outside storage layer.
+Even if simplified, architecture must resemble real B+ tree.
 
 ---
 
-## 🔷 OOP Requirements
+# 🔷 LAYERED PACKAGE STRUCTURE
 
-Must demonstrate:
+Design packages like:
 
-* Encapsulation
-* Composition over inheritance
-* Interfaces where meaningful
-* No god class
-* No static procedural dumping
-* Clear responsibilities per class
+```
+engine/
+storage/
+buffer/
+catalog/
+transaction/
+index/
+common/
+```
 
-Design for extensibility.
+Parser will only interact with:
+
+* Database
+* Transaction
+* Table API
+
+No other internal classes exposed.
 
 ---
 
-## 🔷 Deliverables
+# 🔷 EXTENSIBILITY REQUIREMENTS
 
-Generate:
+Design must allow:
 
-1. Full project structure
-2. All core classes
-3. Documentation comments
-4. Minimal main method demonstrating:
+* Adding secondary indexes later
+* Adding concurrency later
+* Adding query planner later
+* Adding optimizer later
 
-* Create database
-* Create table
-* Insert rows
-* Commit transaction
-* Query using scan
-* Demonstrate rollback
+Avoid tightly coupling layers.
+
+Use interfaces where appropriate.
+
+---
+
+# 🔷 CODING STANDARDS
+
+* Clear documentation comments
+* Explain page layout clearly
+* Explain WAL logic clearly
+* Explain recovery process clearly
+* No magic numbers
+* Constants centralized
+* No static global state abuse
+
+---
+
+# 🔷 MINIMAL DEMONSTRATION
+
+Include a minimal `main()` that:
+
+* Creates database
+* Creates table
+* Begins transaction
+* Inserts records
+* Commits
+* Scans records
+* Demonstrates rollback scenario
 
 No GUI.
-No parser.
-Engine-level only.
+No SQL parser.
 
 ---
 
-## 🔷 Design Philosophy
+# 🔷 IMPORTANT
 
-This must resemble a real database engine skeleton, not a serialized file wrapper.
+This must resemble a real database engine skeleton.
 
-Even if simplified, architecture must reflect:
+It must NOT degrade into:
 
-* Page management
-* Logging
-* Catalog
-* Transaction boundary
-* Index layer
+* Sequential file append
+* Simple object serialization
+* Map stored in file
+* CSV-like structure
 
-Think “mini SQLite internal engine in Java”.
+Architecture correctness > feature completeness.
+
+---
+
+Produce full Java source code structured cleanly.
+
+Document assumptions clearly.
