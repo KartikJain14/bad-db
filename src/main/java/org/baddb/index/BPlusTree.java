@@ -3,6 +3,11 @@ package org.baddb.index;
 import org.baddb.common.RID;
 import java.util.TreeMap;
 
+/**
+ * BPlusTree is a self-balancing tree data structure used for efficient data storage and retrieval.
+ * It is widely used in databases for indexing because it keeps data sorted and allows for fast searches, insertions, and deletions.
+ * This implementation is a simplified version for educational purposes.
+ */
 public class BPlusTree implements Index {
     private Node root;
 
