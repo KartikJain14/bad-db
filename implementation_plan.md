@@ -1,42 +1,57 @@
-# Implementation Plan: Extensible Database Engine (Java 21)
+# Implementation Plan: Bad Database Storage Engine
 
-This plan outlines the architecture for a real, page-based embedded database engine core.
+This plan outlines the design and implementation of a university-level database storage engine using Java. The focus is on clean OOP principles, binary file storage using `RandomAccessFile`, and a basic in-memory B-Tree index for performance.
 
-## Proposed Changes
+## 1. System Architecture
 
-### Storage Layer
-- Create `org.baddb.storage.DiskManager`: Manages the `.db` file using `RandomAccessFile`.
-- Create `org.baddb.storage.Page`: Abstract base with header management (PageId, Type, FreeSpace).
-- Create `org.baddb.storage.SlottedPage`: Implements slotted layout for variable-length records.
-- Create `org.baddb.common.RID`: Record identifier (pageId:int, slotId:int).
+The project will follow a modular design to ensure explainability and clarity.
 
-### Buffer Layer
-- Create `org.baddb.buffer.BufferManager`: Manages a pool of pages, dirty flags, and flushing.
+### Data Model
+* **`DataType`**: Enum for supported types (INT, FLOAT, STRING, BOOLEAN).
+* **`Column`**: Defines column properties (name, type).
+* **`Schema`**: Collection of columns defining table structure.
+* **`Record`**: Holds field values corresponding to a schema.
 
-### Catalog Layer
-- Create `org.baddb.catalog.Schema`, `Column`, and `DataType`.
-- Create `org.baddb.catalog.CatalogManager`: Persists system metadata (table name to root page mapping).
+### Storage Engine
+* **`DatabaseFileManager`**: Handles raw binary I/O using `RandomAccessFile`. Implements the file structure:
+    * Header (Magic Number, Version, Table Count)
+    * Schema Section (Metadata for each table)
+    * Data Section (Sequential records)
+* **`Table`**: High-level manager connecting the schema to the data. Uses `BTree` for primary key lookups.
 
-### Transaction & WAL
-- Create `org.baddb.transaction.Transaction`: Maintains tx context (isolation level, state).
-- Create `org.baddb.transaction.WALManager`: Logs modifications to a `.wal` file.
-- Create `org.baddb.transaction.LogRecord`: Types for Insert, Update, Delete, Commit, Abort.
-- Implement Recovery: Replay WAL on startup.
+### Indexing
+* **`BTree`** & **`BTreeNode`**: In-memory structure mapping Primary Key -> File Offset.
 
-### Engine API
-- Create `org.baddb.engine.Database`: Entry point for starting the engine.
-- Create `org.baddb.engine.Table`: High-level CRUD operations.
+## 2. File Format Specification
 
-### Index Layer
-- Create `org.baddb.index.Index` interface.
-- Create `org.baddb.index.BPlusTree`: Minimal skeleton for primary key indexing.
+The binary file will be structured as follows:
 
-## Verification Plan
+| Section | Content | Bytes/Format |
+| :--- | :--- | :--- |
+| **Header** | Magic Number | 4 bytes (e.g., 'DB01') |
+| | Version | 4 bytes (int) |
+| | Table Count | 4 bytes (int) |
+| **Schema** | Table Name | `writeUTF` |
+| | Column Count | `writeInt` |
+| | [Column Name] | `writeUTF` |
+| | [Data Type] | `writeInt` (Ordinal) |
+| **Data** | [Record Data] | Sequential `writeInt`, `writeFloat`, etc. |
 
-### Automated Tests
-- Unit tests for `SlottedPage` serialization.
-- Buffer manager eviction and dirty page flushing.
-- WAL recovery test: crash before commit and verify state.
+## 3. Implementation Steps
 
-### Manual Verification
-- Run a demo `main()` method showing table creation, record insertion, and transaction rollback.
+1. **Step 1: Core Data Classes**: Implement `DataType`, `Column`, `Schema`, and `Record`.
+2. **Step 2: Indexing System**: Implement a simple `BTree` (order 3 or 4) that stores key-offset pairs.
+3. **Step 3: File Management**: Implement `DatabaseFileManager` for low-level byte manipulation.
+4. **Step 4: Table Orchestration**: Implement `Table` class to handle `insertRecord`, `getAllRecords`, and `searchByPrimaryKey`.
+5. **Step 5: Demonstration**: Create a `Main` class to showcase the features:
+    * Create a database.
+    * Create a table.
+    * Insert records.
+    * Sequential scan.
+    * Fast search using B-Tree index.
+
+## 4. Key OOP Design Principles
+
+* **Encapsulation**: All file-specific logic is hidden within `DatabaseFileManager`.
+* **Abstraction**: `Table` provides a simple interface for database operations.
+* **Maintainability**: Clear separation between storage format and logical data representation.

@@ -1,37 +1,48 @@
-# Bad-DB: An Educational Database Engine
+# Bad Database Storage Engine
 
-Bad-DB is a minimal, educational relational database engine written in Java 21 from scratch. It avoids third-party libraries to demonstrate the core architectural principles of how modern databases (like SQLite or Postgres) handle storage, persistence, and ACID transactions.
+BadDB is a lightweight binary database storage engine with B-Tree indexing. It is designed for university Object-Oriented Programming (OOP) projects and provides a clean, simple, and explainable interface for binary file storage.
 
-## 🚀 Key Features
+## 🌟 Key Features
 
-*   **Page-Based Storage**: A custom disk manager that organizes data into fixed-size 4KB blocks.
-*   **Buffer Pool**: A memory-resident page cache that reduces disk I/O.
-*   **Slotted Pages**: Flexible record storage layout allowing for variable-length rows and efficient deletion.
-*   **System Catalog**: Persistent metadata and schema management stored in the database's "root" page (ID 0).
-*   **ACID Transactions**: Support for Atomicity, Consistency, Isolation, and Durability.
-*   **Write-Ahead Logging (WAL)**: All modifications are logged to a persistent journal before being applied, ensuring durability.
-*   **ARIES-Style Recovery**: Automated database recovery after an unexpected crash by replaying the WAL.
-*   **B+ Tree Indexing**: Skeleton implementation for accelerated record lookups by key.
+*   **Binary Binary Layout**: Direct record storage using `RandomAccessFile`.
+*   **Sequential Storage**: Records are stored one after another to maintain a predictable layout.
+*   **B-Tree Indexing**: An in-memory B-Tree for $O(\log n)$ primary key search performance.
+*   **SQL-like API**: Supports `CREATE TABLE`, `INSERT INTO`, and `SELECT WHERE`.
+*   **Explainable Code**: Built with modularity and educational clarity as top priorities.
 
-## 🛠️ Components
+## 📂 Project Structure
 
-1.  **Storage Layer** (`org.baddb.storage`): Manages direct file I/O and page-level formatting.
-2.  **Buffer Layer** (`org.baddb.buffer`): Implements the page cache and flushing policy.
-3.  **Catalog Layer** (`org.baddb.catalog`): Handles table definitions, schemas, and persistence of metadata.
-4.  **Transaction Layer** (`org.baddb.transaction`): Manages the WAL, commit/rollback logic, and crash recovery.
-5.  **Engine Layer** (`org.baddb.engine`): The high-level API for creating tables, inserting, and scanning records.
+| File | Description |
+| :--- | :--- |
+| `src/main/java/org/baddb/model/DataType.java` | Enum defining supported types (INT, FLOAT, STRING, BOOLEAN). |
+| `src/main/java/org/baddb/model/Column.java` | Metadata for a single column (name, type). |
+| `src/main/java/org/baddb/model/Schema.java` | Collection of columns defining a table's layout. |
+| `src/main/java/org/baddb/model/Record.java` | Holds data for a single row. |
+| `src/main/java/org/baddb/index/BTreeNode.java` | Node of the B-Tree index. |
+| `src/main/java/org/baddb/index/BTree.java` | Core B-Tree implementation (maps Key -> File Offset). |
+| `src/main/java/org/baddb/storage/DatabaseFileManager.java` | Low-level binary I/O orchestrator. |
+| `src/main/java/org/baddb/storage/Table.java` | High-level API for SQL-like operations. |
+| `src/main/java/org/baddb/Main.java` | Demonstration of the system's capabilities. |
 
-## 📁 Getting Started
+## 🛠️ How to Compile and Run
 
 ### Prerequisites
-*   Java 21 or higher.
-*   No external dependencies required.
+*   Java Development Kit (JDK 8 or higher).
 
-### Exploring the Code
-*   Check out [USAGE.md](./USAGE.md) for a quick guide on how to interact with the engine.
-*   Read [INTERNALS.md](./INTERNALS.md) for a deep dive into the architecture and design decisions.
-*   Run the provided `Demo.java` to see the engine in action.
+### Step 1: Compile from the Root Directory
+```powershell
+# Compile all files including subpackages
+javac -d out (dir src/main/java/org/baddb/*.java -Recurse)
+```
 
----
+### Step 2: Run the Demonstration
+```powershell
+java -cp out org.baddb.Main
+```
 
-*Note: Bad-DB is intended for educational purposes only. It prioritizes clarity and simplicity over high performance or production-ready features (like query optimization or advanced concurrency).*
+### Step 3: Run the SDK Guide
+See `sdk_guide.md` for instructions on how to use BadDB in your own code.
+
+## 📖 In-Depth Documentation
+*   **[SDK Guide](sdk_guide.md)**: Developer guide for building apps with BadDB.
+*   **[Detailed Code Explanation](code_explanation.md)**: Line-by-line breakdown of every function for beginners.

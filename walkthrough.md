@@ -1,46 +1,66 @@
-# Walkthrough: Core Database Engine (Java 21)
+# Mini Database Storage Engine - Walkthrough
 
-I have implemented a real, page-based embedded database engine core in Java 21. The engine follows a layered architecture resembling production database systems like SQLite or PostgreSQL.
+This document explains the design and implementation of the database storage engine.
 
-## Core Components
+## 1. File Structure (Binary Layout)
 
-### 📦 Storage Layer
-- **[Constants.java](file:///d:/repos/bad-db/src/main/java/org/baddb/common/Constants.java)**: Centralized configuration (4096 byte pages, header offsets).
-- **[DiskManager.java](file:///d:/repos/bad-db/src/main/java/org/baddb/storage/DiskManager.java)**: Handles raw I/O using `RandomAccessFile`.
-- **[SlottedPage.java](file:///d:/repos/bad-db/src/main/java/org/baddb/storage/SlottedPage.java)**: Implements the slotted page layout, allowing variable-length records to be stored efficiently.
+The database uses a custom binary format managed by `RandomAccessFile`. This allows jumping directly to any record's byte offset.
 
-### 🧠 Buffer & Catalog
-- **[BufferManager.java](file:///d:/repos/bad-db/src/main/java/org/baddb/buffer/BufferManager.java)**: Caches pages in memory and manages dirty page flushing.
-- **[CatalogManager.java](file:///d:/repos/bad-db/src/main/java/org/baddb/catalog/CatalogManager.java)**: Manages table metadata and schemas, persisting them in a reserved catalog page (Page 0).
+### Layout at a Glance:
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| Magic Number | 4 bytes | Identifies the file as a valid DB ('DB01') |
+| Version | INT | Database version |
+| Table Count | INT | Number of tables in the file |
+| **Schema Area** | | |
+| Table Name | UTF String | Name of the table |
+| Column Count | INT | Number of columns |
+| Col Name | UTF String | Column name |
+| Col Type | INT | Ordinal of `DataType` enum |
+| **Data Area** | | |
+| Values | Sequential | Binary data based on Column Type |
 
-### ⚡ Transactions & ACID
-- **[TransactionManager.java](file:///d:/repos/bad-db/src/main/java/org/baddb/transaction/TransactionManager.java)**: Coordinates `BEGIN`, `COMMIT`, and `ROLLBACK`.
-- **[WALManager.java](file:///d:/repos/bad-db/src/main/java/org/baddb/transaction/WALManager.java)**: Implements Write-Ahead Logging for durability and atomicity.
-- **[RecoveryManager.java](file:///d:/repos/bad-db/src/main/java/org/baddb/transaction/RecoveryManager.java)**: Replays the WAL on startup to redo committed transactions and undo uncommitted ones.
+---
 
-### 🚀 SDK API
-- **[Database.java](file:///d:/repos/bad-db/src/main/java/org/baddb/engine/Database.java)**: The high-level entry point for the engine.
-- **[Table.java](file:///d:/repos/bad-db/src/main/java/org/baddb/engine/Table.java)**: Provides CRUD operations ([insert](file:///d:/repos/bad-db/src/main/java/org/baddb/engine/Table.java#26-52), [get](file:///d:/repos/bad-db/src/main/java/org/baddb/engine/Record.java#21-24), [update](file:///d:/repos/bad-db/src/main/java/org/baddb/engine/Table.java#60-72), [delete](file:///d:/repos/bad-db/src/main/java/org/baddb/engine/Table.java#73-79), [scan](file:///d:/repos/bad-db/src/main/java/org/baddb/engine/Table.java#80-96), [search](file:///d:/repos/bad-db/src/main/java/org/baddb/engine/Table.java#97-108)) and handles automatic paging.
+## 2. Core Components
 
-## Demo Results
+### `DataType` (Enum)
+Defines the primitive types the engine understands: `INT`, `FLOAT`, `STRING`, `BOOLEAN`.
 
-The implementation was verified using **[Demo.java](file:///d:/repos/bad-db/src/main/java/org/baddb/Demo.java)**.
+### `Column` & `Schema`
+Classes that define metadata. `Schema` holds a `List<Column>`. This is written once to the file during initialization and used to interpret binary chunks as records.
 
-### Output
-```text
-Creating table 'users'...
-Started transaction 1
-Committed transaction.
-Scanning users:
- - 1: Alice (30)
- - 2: Bob (25)
-Demonstrating rollback...
-Rolled back transaction.
-Charlie found after rollback? false
-```
+### `Record`
+A data container. It stores values in an `Object[]` array. When writing, we map these objects back to binary using `writeUTF`, `writeInt`, etc.
 
-### Key Features Demonstrated:
-- **Persistence**: Data is stored in `testdb.db`.
-- **ACID properties**: Rollback successfully reverts in-memory and on-disk changes.
-- **Variable-length records**: Strings and primitives are packed into slotted pages.
-- **Auto-paging**: The system automatically allocates new pages when existing ones are full.
+### `DatabaseFileManager`
+The low-level I/O orchestrator.
+* **`createNewDatabase`**: Formats the file with headers and schema.
+* **`appendRecord`**: Writes records to the end of the file. Crucially, it returns the *byte offset* where the record was written.
+* **`readRecord`**: Given an offset, it seeks directly to that position and reads the data based on the schema.
+
+### `BTree` & `BTreeNode` (In-Memory Index)
+A basic B-Tree (order 4) that stores primary key to offset mappings.
+* **Optimization**: When a record is inserted, its (Key, Offset) pair is added to the B-Tree.
+* **Search**: The `searchByPrimaryKey` method first queries the B-Tree to find the byte offset, then uses `RandomAccessFile.seek()` to jump directly to the record, avoiding a slow sequential scan.
+
+---
+
+## 3. How to Run
+
+1. **Compile**: `javac -d out src/main/java/com/minidb/*.java`
+2. **Run**: `java -cp out com.minidb.Main`
+
+The `Main` class will:
+1. Create `student_records.db`.
+2. Populate it with sample students.
+3. Perform a **full table scan** (demonstrating sequential reading).
+4. Perform **indexed lookups** (demonstrating O(log n) search performance).
+
+---
+
+## 4. Academic Presentation Tips
+During a viva, you can explain:
+* **Serialization**: We don't use `Serializable` interface. We manually write bytes (e.g., `writeInt`) to keep the format fixed and predictable.
+* **Random Access**: Why `RandomAccessFile`? Because unlike `FileInputStream`, it allows us to jump to the middle of the file instantly using the B-Tree offset.
+* **B-Tree**: Explain that the B-Tree remains in memory for speed, while the data is safely written to disk.

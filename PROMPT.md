@@ -1,324 +1,241 @@
-# 🔥 AI IDE PROMPT — BUILD EXTENSIBLE CORE DATABASE ENGINE (JAVA 21)
+You are a senior Java developer building a **mini database storage engine** for a university Object-Oriented Programming project.
 
-You are a senior database systems engineer.
-
-You are designing a **real, extensible embedded database engine core** in **Java 21**, without third-party libraries.
-
-This is NOT a serialization project.
-This must architecturally resemble a real database engine.
-
-The output will later be consumed by a custom query parser and GUI.
+The implementation must follow the provided academic report but may include a **simple B-Tree index for optimization**, without overcomplicating the system.
 
 ---
 
-# 🔷 HARD CONSTRAINTS
+# 🔷 PROJECT CONTEXT
 
-* Java 21
-* No third-party libraries
-* Standard library only
-* Clean OOP design
-* No god classes
-* No procedural dumping
-* Clear layering
-* Designed for extensibility
+This is an **educational database system** focused on:
 
-The final result must look like a small SDK.
+* Binary file storage
+* Record serialization
+* Schema management
+* Basic indexing using B-Tree
 
----
+It is NOT a production database.
 
-# 🔷 DESIGN GOALS
+Keep the design:
 
-Build a **core database engine** that includes:
-
-* Page-based storage
-* Slotted page layout
-* Buffer manager
-* Disk manager
-* System catalog
-* CRUD operations
-* Basic transactions
-* Write-ahead logging (WAL)
-* Crash recovery (simplified)
-* Index abstraction with B+ tree skeleton
-* Clean API surface for future parser
-
-Single-threaded engine is acceptable.
+* Simple
+* Clean
+* Explainable in viva
 
 ---
 
-# 🔷 STORAGE LAYER (MANDATORY)
+# 🔷 CORE REQUIREMENTS
 
-## 1️⃣ Page-Based File Structure
+## 1️⃣ File Initialization (MANDATORY)
 
-* Database stored in a single `.db` file
-* Fixed-size pages (e.g., 4096 bytes)
-* Each page has:
+Use `RandomAccessFile`.
 
-  * Page ID
-  * Page type
-  * Free space pointer
-  * Slot directory (for variable-length records)
+When creating a database file:
 
-Use a **Slotted Page Layout**:
+* Write:
 
-* Records stored from bottom upward
-* Slot directory grows from top downward
-* Supports variable-length strings
-
-Implement:
-
-* Page (abstract)
-* SlottedPage
-* PageType enum
-* RID (pageId + slotId)
+  * Magic number (database signature)
+  * Version number
+  * Number of tables
 
 ---
 
-## 2️⃣ Disk Manager
+## 2️⃣ FILE STRUCTURE (STRICT)
 
-Responsible for:
+The binary file must contain:
 
-* Reading pages from disk
-* Writing pages to disk
-* Allocating new pages
-* Managing page IDs
+### Header Section
 
-No business logic here.
-
----
-
-## 3️⃣ Buffer Manager
-
-* In-memory page cache
-* Map<PageId, Page>
-* Dirty page tracking
-* Flush mechanism
-* No need for full LRU (simple strategy acceptable)
-
-All engine operations must go through buffer manager.
+* Magic number
+* Version
+* Table count
 
 ---
 
-# 🔷 CATALOG SYSTEM
+### Schema Section
 
-Implement system catalog stored in reserved pages.
+For each table:
 
-Catalog must persist:
+* Table name
+* Number of columns
+* For each column:
 
-* Table metadata
-* Schema (columns, data types, constraints)
-* Root page ID of table
-* Root page ID of index
-
-Classes:
-
-* Schema
-* Column
-* TableMetadata
-* CatalogManager
-
-Catalog must survive restart.
+  * Column name
+  * Data type
 
 ---
 
-# 🔷 DATA TYPES
+### Data Section
 
-Support:
+* Records stored **sequentially**
+* Serialized in schema order
+* Variable-length strings allowed
+
+---
+
+## 3️⃣ RECORD STORAGE
+
+* Each record is serialized using:
+
+  * `writeInt`, `writeFloat`, `writeBoolean`, `writeUTF`
+* Maintain column order
+* No object serialization
+
+---
+
+## 4️⃣ DATA RETRIEVAL
+
+* Default: sequential scan
+* Return records as objects
+
+---
+
+# 🔷 5️⃣ SIMPLE B-TREE INDEX (IMPORTANT BUT KEEP IT LIGHT)
+
+Add a **basic B-Tree index for PRIMARY KEY only**.
+
+### Requirements:
+
+* In-memory B-Tree (no need to persist to file for now)
+* Key → Record position (file offset)
+
+---
+
+### B-Tree Features:
+
+* Insert(key, offset)
+* Search(key) → offset
+* No delete required (optional)
+* Keep order small (e.g., 3 or 4)
+
+---
+
+### When inserting a record:
+
+* Store its file offset
+* Insert key + offset into B-Tree
+
+---
+
+### When searching:
+
+* Use B-Tree first
+* Jump directly to file offset
+* Read record
+
+---
+
+### Keep B-Tree:
+
+* Simple
+* Clean
+* Fully explainable
+
+---
+
+# 🔷 SUPPORTED DATA TYPES
 
 * INT
 * FLOAT
+* STRING
 * BOOLEAN
-* STRING (variable-length)
 
-Include:
-
-* NOT NULL constraint
-* PRIMARY KEY metadata
-
-Primary key index must be supported via index layer.
+Use enum `DataType`.
 
 ---
 
-# 🔷 TABLE & RECORD OPERATIONS
+# 🔷 OOP DESIGN (VERY IMPORTANT)
 
-Expose clean SDK-level API:
+Create clean classes:
 
-```java
-Database db = new Database("mydb");
-db.createTable("users", schema);
+* `DataType` (enum)
+* `Column`
+* `Schema`
+* `Record`
+* `Table`
+* `DatabaseFileManager`
+* `BTree`
+* `BTreeNode`
 
-Transaction tx = db.beginTransaction();
+---
 
-RID rid = db.insert(tx, "users", record);
-db.update(tx, "users", rid, newValues);
-db.delete(tx, "users", rid);
+### Responsibilities:
 
-Iterator<Record> it = db.scan(tx, "users");
-List<Record> results = db.search(tx, "users", predicate);
+* `DatabaseFileManager`
+  → Handles all file operations
 
-db.commit(tx);
-```
+* `Table`
+  → Manages schema, insert, read, index usage
 
-Required operations:
+* `Record`
+  → Represents row data
+
+* `BTree`
+  → Index structure (key → file offset)
+
+---
+
+# 🔷 FUNCTIONAL REQUIREMENTS
+
+Must support:
 
 * createTable
-* insert
-* update
-* delete (tombstone allowed)
-* scan
-* search (linear scan acceptable initially)
-
-All operations must require a Transaction object.
+* insertRecord
+* getAllRecords (scan)
+* searchByPrimaryKey (uses B-Tree)
 
 ---
 
-# 🔷 TRANSACTION & ACID (Lite but Real)
+# 🔷 IMPORTANT CONSTRAINTS
 
-Implement:
+DO NOT implement:
 
-## Transaction Manager
-
-* beginTransaction()
-* commit()
-* rollback()
-
-## Write-Ahead Logging (WAL)
-
-* Separate `.wal` file
-* Log before modifying any page
-* Log must contain:
-
-  * Transaction ID
-  * Operation type
-  * Before image
-  * After image
-
-## Atomicity
-
-* On crash, replay committed transactions
-* Undo uncommitted transactions
-
-## Durability
-
-* WAL flushed before commit returns
-
-Isolation:
-
-* Single-threaded engine acceptable
-* Document assumption
-
-Consistency:
-
-* Enforce schema constraints
-* Enforce NOT NULL
-* Primary key uniqueness if index exists
+* Transactions
+* WAL
+* ACID
+* Concurrency
+* Disk-based indexing
+* Query parser
 
 ---
 
-# 🔷 INDEX LAYER (Lite but Architecturally Real)
+# 🔷 DEMONSTRATION
 
-Implement:
+Include a `main()`:
 
-* Index interface
-* BPlusTree class (minimal but structurally correct)
-* Node abstraction
-* LeafNode
-* InternalNode
-
-Required:
-
-* insert(key, RID)
-* search(key)
-
-Primary key should optionally use this index.
-
-Even if simplified, architecture must resemble real B+ tree.
+1. Create DB
+2. Create table with primary key
+3. Insert multiple records
+4. Print all records (scan)
+5. Search by primary key using B-Tree
 
 ---
 
-# 🔷 LAYERED PACKAGE STRUCTURE
+# 🔷 CODE QUALITY
 
-Design packages like:
+* Clear comments
+* Explain:
 
-```
-engine/
-storage/
-buffer/
-catalog/
-transaction/
-index/
-common/
-```
-
-Parser will only interact with:
-
-* Database
-* Transaction
-* Table API
-
-No other internal classes exposed.
+  * File structure
+  * Serialization
+  * B-Tree logic
+* Keep code readable and modular
 
 ---
 
-# 🔷 EXTENSIBILITY REQUIREMENTS
+# 🔷 DESIGN PHILOSOPHY
 
-Design must allow:
-
-* Adding secondary indexes later
-* Adding concurrency later
-* Adding query planner later
-* Adding optimizer later
-
-Avoid tightly coupling layers.
-
-Use interfaces where appropriate.
+* Follow report strictly for storage
+* Add B-Tree as a small optimization layer
+* Keep everything explainable in 5–10 minutes
 
 ---
 
-# 🔷 CODING STANDARDS
+# 🔷 GOAL
 
-* Clear documentation comments
-* Explain page layout clearly
-* Explain WAL logic clearly
-* Explain recovery process clearly
-* No magic numbers
-* Constants centralized
-* No static global state abuse
+Produce a system that:
 
----
-
-# 🔷 MINIMAL DEMONSTRATION
-
-Include a minimal `main()` that:
-
-* Creates database
-* Creates table
-* Begins transaction
-* Inserts records
-* Commits
-* Scans records
-* Demonstrates rollback scenario
-
-No GUI.
-No SQL parser.
-
----
-
-# 🔷 IMPORTANT
-
-This must resemble a real database engine skeleton.
-
-It must NOT degrade into:
-
-* Sequential file append
-* Simple object serialization
-* Map stored in file
-* CSV-like structure
-
-Architecture correctness > feature completeness.
-
----
-
-Produce full Java source code structured cleanly.
-
-Document assumptions clearly.
+* Is NOT a CSV clone
+* Uses real binary storage
+* Has a basic indexing mechanism
+* Looks like solid student work
+* Is easy to explain in viva
