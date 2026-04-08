@@ -14,7 +14,6 @@ public class Main {
     public static void main(String[] args) {
         String dbPath = "student_records.db";
         try {
-            // --- PART 1: CREATE AND INITIALIZE ---
             Schema studentSchema = new Schema();
             studentSchema.addColumn("id", DataType.INT);
             studentSchema.addColumn("name", DataType.STRING);
@@ -22,39 +21,57 @@ public class Main {
             studentSchema.addColumn("is_active", DataType.BOOLEAN);
 
             System.out.println("--- STEP 1: INITIALIZING NEW DATABASE ---");
-            Table table1 = new Table("Students", studentSchema, dbPath);
-            table1.initialize();
-            
-            insertStudent(table1, 101, "Alice Smith", 88.5f, true);
-            insertStudent(table1, 105, "Bob Johnson", 92.0f, true);
-            
-            System.out.println("Closing database...\n");
-            table1.close();
+            Table students = new Table("Students", studentSchema, dbPath);
+            students.initialize();
 
-            // --- PART 2: LOAD AND RE-OPEN ---
-            System.out.println("--- STEP 2: RE-OPENING EXISTING DATABASE ---");
-            Table table2 = new Table(dbPath);
-            table2.open(); // Reads schema and rebuilds index automatically
-            
-            System.out.println("Inserting new record into existing database...");
-            insertStudent(table2, 110, "Diana Prince", 98.4f, true);
+            students.insertRecord(studentRecord(studentSchema, 101, "Alice Smith", 88.5f, true));
+            students.insertRecord(studentRecord(studentSchema, 105, "Bob Johnson", 92.0f, true));
+            students.insertRecord(studentRecord(studentSchema, 110, "Diana Prince", 98.4f, true));
+            printTable(students, "After inserts");
 
-            System.out.println("\n--- FINAL RECORD LIST (LOADED FROM DISK) ---");
-            table2.getAllRecords().forEach(r -> System.out.println("Loaded: " + r));
+            System.out.println("\n--- STEP 2: BASIC LOOKUPS ---");
+            System.out.println("Primary key 105 -> " + students.searchByPrimaryKey(105));
+            System.out.println("Select by name 'Alice Smith' -> " + students.select("name", "Alice Smith"));
+            System.out.println("Exists(999) -> " + students.exists(999));
+            System.out.println("Count -> " + students.countRecords());
 
-            table2.close();
+            System.out.println("\n--- STEP 3: UPDATE / DELETE / UPSERT ---");
+            students.updateRecord(105, studentRecord(studentSchema, 105, "Bob Johnson", 95.25f, true));
+            students.deleteRecord(101);
+            boolean updated = students.upsertRecord(studentRecord(studentSchema, 110, "Diana Prince", 99.1f, true));
+            boolean inserted = students.upsertRecord(studentRecord(studentSchema, 115, "Eve Adams", 91.2f, true));
+            System.out.println("Upsert existing record updated? " + updated);
+            System.out.println("Upsert new record updated? " + inserted);
+            printTable(students, "After update/delete/upsert");
+
+            System.out.println("\n--- STEP 4: COMPACT AND CLOSE ---");
+            students.compact();
+            printTable(students, "After compaction");
+            students.close();
+
+            System.out.println("\n--- STEP 5: REOPEN FROM DISK ---");
+            Table reopened = new Table(dbPath);
+            reopened.open();
+            printTable(reopened, "Reloaded from disk");
+            reopened.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private static void insertStudent(Table table, int id, String name, float grade, boolean active) throws IOException {
-        Record record = new Record(table.getSchema().getColumnCount());
+    private static Record studentRecord(Schema schema, int id, String name, float grade, boolean active) {
+        Record record = new Record(schema.getColumnCount());
         record.setValue(0, id);
         record.setValue(1, name);
         record.setValue(2, grade);
         record.setValue(3, active);
-        table.insertRecord(record);
-        System.out.println("Inserted: " + record);
+        return record;
+    }
+
+    private static void printTable(Table table, String title) throws IOException {
+        System.out.println(title + ":");
+        for (Record record : table.getAllRecords()) {
+            System.out.println("  " + record);
+        }
     }
 }

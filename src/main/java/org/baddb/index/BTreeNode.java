@@ -1,6 +1,7 @@
 package org.baddb.index;
 
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.List;
 
 /**
@@ -79,5 +80,17 @@ public class BTreeNode {
         children.add(i + 1, z);
         keys.add(i, y.keys.remove(t - 1));
         values.add(i, y.values.remove(t - 1));
+    }
+
+    public void collectEntries(Map<Integer, Long> entries) {
+        for (int i = 0; i < keys.size(); i++) {
+            if (!leaf) {
+                children.get(i).collectEntries(entries);
+            }
+            entries.put(keys.get(i), values.get(i));
+        }
+        if (!leaf) {
+            children.get(keys.size()).collectEntries(entries);
+        }
     }
 }
