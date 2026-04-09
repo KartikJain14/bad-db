@@ -3,75 +3,239 @@ package org.baddb;
 import org.baddb.model.DataType;
 import org.baddb.model.Record;
 import org.baddb.model.Schema;
+import org.baddb.parser.BQLParser;
 import org.baddb.storage.Table;
 
 import java.io.IOException;
+import java.util.List;
+import java.util.Scanner;
 
-/**
- * Entry point for the BadDB demonstration.
- */
 public class Main {
+
+    private static Table activeTable = null;
+    private static final Scanner scanner = new Scanner(System.in);
+
     public static void main(String[] args) {
-        String dbPath = "student_records.bad";
-        try {
-            Schema studentSchema = new Schema();
-            studentSchema.addColumn("id", DataType.INT);
-            studentSchema.addColumn("name", DataType.STRING);
-            studentSchema.addColumn("grade", DataType.FLOAT);
-            studentSchema.addColumn("is_active", DataType.BOOLEAN);
+        System.out.println("Welcome to BadDB Console!");
 
-            System.out.println("--- STEP 1: INITIALIZING NEW DATABASE ---");
-            Table students = new Table("Students", studentSchema, dbPath);
-            students.initialize();
+        while (true) {
+            System.out.println("\n--- MAIN MENU ---");
+            System.out.println("1. Create New Database (GUI Prompt)");
+            System.out.println("2. Open Existing Database (GUI Prompt)");
+            System.out.println("3. Insert/Upsert Record (GUI Prompt)");
+            System.out.println("4. Query Records (GUI Prompt)");
+            System.out.println("5. BQL Interactive Mode");
+            System.out.println("6. Exit");
+            System.out.print("Choose an option: ");
 
-            students.insertRecord(studentRecord(studentSchema, 101, "Alice Smith", 88.5f, true));
-            students.insertRecord(studentRecord(studentSchema, 105, "Bob Johnson", 92.0f, true));
-            students.insertRecord(studentRecord(studentSchema, 110, "Diana Prince", 98.4f, true));
-            printTable(students, "After inserts");
+            String choiceStr = scanner.nextLine().trim();
+            int choice;
+            try {
+                choice = Integer.parseInt(choiceStr);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid option.");
+                continue;
+            }
 
-            System.out.println("\n--- STEP 2: BASIC LOOKUPS ---");
-            System.out.println("Primary key 105 -> " + students.searchByPrimaryKey(105));
-            System.out.println("Select by name 'Alice Smith' -> " + students.select("name", "Alice Smith"));
-            System.out.println("Exists(999) -> " + students.exists(999));
-            System.out.println("Count -> " + students.countRecords());
-
-            System.out.println("\n--- STEP 3: UPDATE / DELETE / UPSERT ---");
-            students.updateRecord(105, studentRecord(studentSchema, 105, "Bob Johnson", 95.25f, true));
-            students.deleteRecord(101);
-            boolean updated = students.upsertRecord(studentRecord(studentSchema, 110, "Diana Prince", 99.1f, true));
-            boolean inserted = students.upsertRecord(studentRecord(studentSchema, 115, "Eve Adams", 91.2f, true));
-            System.out.println("Upsert existing record updated? " + updated);
-            System.out.println("Upsert new record updated? " + inserted);
-            printTable(students, "After update/delete/upsert");
-
-            System.out.println("\n--- STEP 4: COMPACT AND CLOSE ---");
-            students.compact();
-            printTable(students, "After compaction");
-            students.close();
-
-            System.out.println("\n--- STEP 5: REOPEN FROM DISK ---");
-            Table reopened = new Table(dbPath);
-            reopened.open();
-            printTable(reopened, "Reloaded from disk");
-            reopened.close();
-        } catch (IOException e) {
-            e.printStackTrace();
+            try {
+                switch (choice) {
+                    case 1:
+                        menuCreateDatabase();
+                        break;
+                    case 2:
+                        menuOpenDatabase();
+                        break;
+                    case 3:
+                        menuInsertRecord();
+                        break;
+                    case 4:
+                        menuQueryRecords();
+                        break;
+                    case 5:
+                        runBQLMode();
+                        break;
+                    case 6:
+                        if (activeTable != null) {
+                            activeTable.close();
+                        }
+                        System.out.println("Goodbye!");
+                        return;
+                    default:
+                        System.out.println("Invalid option.");
+                }
+            } catch (Exception e) {
+                System.out.println("Error: " + e.getMessage());
+            }
         }
     }
 
-    private static Record studentRecord(Schema schema, int id, String name, float grade, boolean active) {
-        Record record = new Record(schema.getColumnCount());
-        record.setValue(0, id);
-        record.setValue(1, name);
-        record.setValue(2, grade);
-        record.setValue(3, active);
-        return record;
+    private static void menuCreateDatabase() throws IOException {
+        System.out.print("Enter database path (e.g. data.bad): ");
+        String path = scanner.nextLine().trim();
+        System.out.print("Enter table name: ");
+        String name = scanner.nextLine().trim();
+
+        Schema schema = new Schema();
+        while (true) {
+            System.out.print("Add column? (y/n): ");
+            if (!scanner.nextLine().trim().equalsIgnoreCase("y")) {
+                break;
+            }
+            System.out.print("Column Name: ");
+            String colName = scanner.nextLine().trim();
+            System.out.print("Column Type (INT, FLOAT, STRING, BOOLEAN): ");
+            String colType = scanner.nextLine().trim().toUpperCase();
+
+            try {
+                schema.addColumn(colName, DataType.valueOf(colType));
+                System.out.println("Added column " + colName);
+            } catch (Exception e) {
+                System.out.println("Invalid type. Column not added.");
+            }
+        }
+
+        if (schema.getColumnCount() == 0) {
+            System.out.println("Schema must have at least one column. Initializing aborted.");
+            return;
+        }
+
+        if (activeTable != null) {
+            activeTable.close();
+        }
+
+        activeTable = new Table(name, schema, path);
+        activeTable.initialize();
+        System.out.println("Database successfully created and loaded as active table.");
     }
 
-    private static void printTable(Table table, String title) throws IOException {
-        System.out.println(title + ":");
-        for (Record record : table.getAllRecords()) {
-            System.out.println("  " + record);
+    private static void menuOpenDatabase() throws IOException {
+        System.out.print("Enter database path: ");
+        String path = scanner.nextLine().trim();
+
+        if (activeTable != null) {
+            activeTable.close();
+        }
+
+        activeTable = new Table(path);
+        activeTable.open();
+        System.out.println("Database loaded: " + activeTable.getName());
+        System.out.println(activeTable.getSchema());
+    }
+
+    private static void checkActiveTable() {
+        if (activeTable == null) {
+            throw new IllegalStateException("No active database. Create or open one first.");
+        }
+    }
+
+    private static void menuInsertRecord() throws IOException {
+        checkActiveTable();
+        Schema schema = activeTable.getSchema();
+        Record record = new Record(schema.getColumnCount());
+
+        System.out.println("Enter values for the new record:");
+        for (int i = 0; i < schema.getColumnCount(); i++) {
+            org.baddb.model.Column col = schema.getColumns().get(i);
+            System.out.print(col.getName() + " (" + col.getType() + "): ");
+            String val = scanner.nextLine().trim();
+            Object parsedVal = parseValue(val, col.getType());
+            record.setValue(i, parsedVal);
+        }
+
+        System.out.print("Use UPSERT instead of INSERT? (y/n): ");
+        boolean useUpsert = scanner.nextLine().trim().equalsIgnoreCase("y");
+
+        if (useUpsert) {
+            activeTable.upsertRecord(record);
+            System.out.println("Record upserted.");
+        } else {
+            activeTable.insertRecord(record);
+            System.out.println("Record inserted.");
+        }
+    }
+
+    private static void menuQueryRecords() throws IOException {
+        checkActiveTable();
+        System.out.println("1. Find by Primary Key");
+        System.out.println("2. Select by Column Value");
+        System.out.println("3. View All Records");
+        System.out.print("Choice: ");
+        String choice = scanner.nextLine().trim();
+
+        if (choice.equals("1")) {
+            System.out.print("Enter Primary Key: ");
+            int pk = Integer.parseInt(scanner.nextLine().trim());
+            Record r = activeTable.searchByPrimaryKey(pk);
+            if (r != null) {
+                System.out.println(r);
+            } else {
+                System.out.println("Not found.");
+            }
+        } else if (choice.equals("2")) {
+            System.out.print("Enter Column Name: ");
+            String colName = scanner.nextLine().trim();
+            System.out.print("Enter Value: ");
+            String val = scanner.nextLine().trim();
+
+            DataType type = null;
+            for (org.baddb.model.Column col : activeTable.getSchema().getColumns()) {
+                if (col.getName().equalsIgnoreCase(colName)) {
+                    type = col.getType();
+                    break;
+                }
+            }
+
+            if (type == null) {
+                System.out.println("Column not found.");
+                return;
+            }
+
+            Object parsedVal = parseValue(val, type);
+            List<Record> results = activeTable.select(colName, parsedVal);
+            for (Record r : results) {
+                System.out.println(r);
+            }
+            System.out.println("Total: " + results.size());
+
+        } else if (choice.equals("3")) {
+            List<Record> results = activeTable.getAllRecords();
+            for (Record r : results) {
+                System.out.println(r);
+            }
+            System.out.println("Total: " + results.size());
+        }
+    }
+
+    private static void runBQLMode() {
+        System.out.println("--- BQL INTERACTIVE MODE ---");
+        System.out.println("Type EXIT to return to Main Menu.");
+        BQLParser parser = new BQLParser();
+
+        // If we already have an active table, we could pass it to the parser
+        // But for simplicity of the isolated session, BQLParser has its own state.
+        
+        while (true) {
+            System.out.print("bql> ");
+            String bql = scanner.nextLine().trim();
+            if (bql.isEmpty()) continue;
+            if (bql.toUpperCase().equals("EXIT")) {
+                if (parser.execute("CLOSE")) {} // safely close
+                break;
+            }
+            parser.execute(bql);
+        }
+    }
+
+    private static Object parseValue(String val, DataType type) {
+        if (val.equalsIgnoreCase("null")) {
+            return null;
+        }
+        switch (type) {
+            case INT: return Integer.parseInt(val);
+            case FLOAT: return Float.parseFloat(val);
+            case BOOLEAN: return Boolean.parseBoolean(val);
+            case STRING: return val; // No quotes needed in GUI prompt mode
+            default: throw new IllegalArgumentException("Unsupported type: " + type);
         }
     }
 }
