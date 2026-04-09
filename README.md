@@ -34,7 +34,7 @@ schema.addColumn("name", DataType.STRING);
 schema.addColumn("grade", DataType.FLOAT);
 schema.addColumn("is_active", DataType.BOOLEAN);
 
-Table students = new Table("Students", schema, "students.db");
+Table students = new Table("Students", schema, "students.bad");
 students.initialize();
 ```
 

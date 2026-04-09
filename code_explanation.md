@@ -82,7 +82,7 @@ This is the entry point. It demonstrates how to build a table and query it.
 Table studentTable = new Table("Students", studentSchema, dbPath);
 studentTable.initialize(); // Creates common file format
 ```
-The `student_records.db` file is generated in the root directory. You can even open it with a hex editor to see the binary data!
+The `student_records.bad` file is generated in the root directory. You can even open it with a hex editor to see the binary data!
 
 ---
 

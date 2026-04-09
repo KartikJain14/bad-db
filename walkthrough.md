@@ -52,7 +52,7 @@ A basic B-Tree (order 4) that stores primary key to offset mappings.
 2. **Run**: `java -cp out com.minidb.Main`
 
 The `Main` class will:
-1. Create `student_records.db`.
+1. Create `student_records.bad`.
 2. Populate it with sample students.
 3. Perform a **full table scan** (demonstrating sequential reading).
 4. Perform **indexed lookups** (demonstrating O(log n) search performance).

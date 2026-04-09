@@ -33,14 +33,14 @@ schema.addColumn("is_active", DataType.BOOLEAN);
 ### Create a new database file
 
 ```java
-Table users = new Table("Users", schema, "users.db");
+Table users = new Table("Users", schema, "users.bad");
 users.initialize();
 ```
 
 ### Open an existing database file
 
 ```java
-Table users = new Table("users.db");
+Table users = new Table("users.bad");
 users.open();
 ```
 
