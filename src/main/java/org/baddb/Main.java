@@ -12,7 +12,7 @@ import java.io.IOException;
  */
 public class Main {
     public static void main(String[] args) {
-        String dbPath = "student_records.db";
+        String dbPath = "student_records.bad";
         try {
             Schema studentSchema = new Schema();
             studentSchema.addColumn("id", DataType.INT);
