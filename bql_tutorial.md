@@ -62,7 +62,7 @@ Returns the total number of non-deleted records in the database.
 
 ### SELECT
 Returns all records where the value for `<columnName>` exactly matches `<value>`.
-**Syntax:** `SELECT <columnName> <value>`
+**Syntax:** `SELECT <columnName> <value>` OR `SELECT *` OR `SELECT ALL`
 **Example:** `SELECT is_active true`
 
 ### SELECT_ALL

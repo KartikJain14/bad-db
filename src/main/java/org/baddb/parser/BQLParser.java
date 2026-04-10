@@ -7,7 +7,6 @@ import org.baddb.storage.Table;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Scanner;
 
 public class BQLParser {
     private Table activeTable;
@@ -211,6 +210,9 @@ public class BQLParser {
 
     private void handleSelect(String[] tokens) throws IOException {
         checkActiveTable();
+        if (tokens.length == 2 && (tokens[1].equalsIgnoreCase("ALL") || tokens[1].equals("*"))) {
+            handleSelectAll();
+        }
         if (tokens.length < 3) {
             System.out.println("Usage: SELECT <colName> <value>");
             return;
