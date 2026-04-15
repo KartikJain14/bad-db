@@ -1,18 +1,19 @@
 package org.baddb;
 
+import org.baddb.model.Column;
 import org.baddb.model.DataType;
-import org.baddb.model.Record;
 import org.baddb.model.Schema;
 import org.baddb.parser.BQLParser;
-import org.baddb.storage.Table;
 
-import java.io.IOException;
-import java.util.List;
 import java.util.Scanner;
 
+/**
+ * Main entry point for BadDB.
+ * Now refactored to use BQLParser for all operations.
+ */
 public class Main {
 
-    private static Table activeTable = null;
+    private static final BQLParser parser = new BQLParser();
     private static final Scanner scanner = new Scanner(System.in);
 
     public static void main(String[] args) {
@@ -20,20 +21,22 @@ public class Main {
 
         while (true) {
             System.out.println("\n--- MAIN MENU ---");
-            System.out.println("1. Create New Database (GUI Prompt)");
-            System.out.println("2. Open Existing Database (GUI Prompt)");
-            System.out.println("3. Insert/Upsert Record (GUI Prompt)");
-            System.out.println("4. Query Records (GUI Prompt)");
+            System.out.println("1. Create New Database (via BQL INIT)");
+            System.out.println("2. Open Existing Database (via BQL OPEN)");
+            System.out.println("3. Insert/Upsert Record (via BQL INSERT/UPSERT)");
+            System.out.println("4. Query Records (via BQL SEARCH/SELECT)");
             System.out.println("5. BQL Interactive Mode");
             System.out.println("6. Exit");
             System.out.print("Choose an option: ");
 
             String choiceStr = scanner.nextLine().trim();
+            if (choiceStr.isEmpty()) continue;
+
             int choice;
             try {
                 choice = Integer.parseInt(choiceStr);
             } catch (NumberFormatException e) {
-                System.out.println("Invalid option.");
+                System.out.println("Invalid option. Please enter a number.");
                 continue;
             }
 
@@ -55,187 +58,172 @@ public class Main {
                         runBQLMode();
                         break;
                     case 6:
-                        if (activeTable != null) {
-                            activeTable.close();
-                        }
+                        parser.execute("CLOSE");
                         System.out.println("Goodbye!");
                         return;
                     default:
-                        System.out.println("Invalid option.");
+                        System.out.println("Invalid option. Choose 1-6.");
                 }
             } catch (Exception e) {
-                System.out.println("Error: " + e.getMessage());
+                System.out.println("Unexpected error: " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }
 
-    private static void menuCreateDatabase() throws IOException {
-        System.out.print("Enter database path (e.g. data.bad): ");
-        String path = scanner.nextLine().trim();
-        System.out.print("Enter table name: ");
-        String name = scanner.nextLine().trim();
+    private static void menuCreateDatabase() {
+        try {
+            System.out.print("Enter database path (e.g. data.bad): ");
+            String path = scanner.nextLine().trim();
+            if (path.isEmpty()) return;
 
-        Schema schema = new Schema();
-        while (true) {
-            System.out.print("Add column? (y/n): ");
-            if (!scanner.nextLine().trim().equalsIgnoreCase("y")) {
-                break;
-            }
-            System.out.print("Column Name: ");
-            String colName = scanner.nextLine().trim();
-            System.out.print("Column Type (INT, FLOAT, STRING, BOOLEAN): ");
-            String colType = scanner.nextLine().trim().toUpperCase();
+            System.out.print("Enter table name: ");
+            String name = scanner.nextLine().trim();
+            if (name.isEmpty()) return;
 
-            try {
-                schema.addColumn(colName, DataType.valueOf(colType));
-                System.out.println("Added column " + colName);
-            } catch (Exception e) {
-                System.out.println("Invalid type. Column not added.");
-            }
-        }
+            StringBuilder query = new StringBuilder("INIT ");
+            query.append(name).append(" ").append(path);
 
-        if (schema.getColumnCount() == 0) {
-            System.out.println("Schema must have at least one column. Initializing aborted.");
-            return;
-        }
-
-        if (activeTable != null) {
-            activeTable.close();
-        }
-
-        activeTable = new Table(name, schema, path);
-        activeTable.initialize();
-        System.out.println("Database successfully created and loaded as active table.");
-    }
-
-    private static void menuOpenDatabase() throws IOException {
-        System.out.print("Enter database path: ");
-        String path = scanner.nextLine().trim();
-
-        if (activeTable != null) {
-            activeTable.close();
-        }
-
-        activeTable = new Table(path);
-        activeTable.open();
-        System.out.println("Database loaded: " + activeTable.getName());
-        System.out.println(activeTable.getSchema());
-    }
-
-    private static void checkActiveTable() {
-        if (activeTable == null) {
-            throw new IllegalStateException("No active database. Create or open one first.");
-        }
-    }
-
-    private static void menuInsertRecord() throws IOException {
-        checkActiveTable();
-        Schema schema = activeTable.getSchema();
-        Record record = new Record(schema.getColumnCount());
-
-        System.out.println("Enter values for the new record:");
-        for (int i = 0; i < schema.getColumnCount(); i++) {
-            org.baddb.model.Column col = schema.getColumns().get(i);
-            System.out.print(col.getName() + " (" + col.getType() + "): ");
-            String val = scanner.nextLine().trim();
-            Object parsedVal = parseValue(val, col.getType());
-            record.setValue(i, parsedVal);
-        }
-
-        System.out.print("Use UPSERT instead of INSERT? (y/n): ");
-        boolean useUpsert = scanner.nextLine().trim().equalsIgnoreCase("y");
-
-        if (useUpsert) {
-            activeTable.upsertRecord(record);
-            System.out.println("Record upserted.");
-        } else {
-            activeTable.insertRecord(record);
-            System.out.println("Record inserted.");
-        }
-    }
-
-    private static void menuQueryRecords() throws IOException {
-        checkActiveTable();
-        System.out.println("1. Find by Primary Key");
-        System.out.println("2. Select by Column Value");
-        System.out.println("3. View All Records");
-        System.out.print("Choice: ");
-        String choice = scanner.nextLine().trim();
-
-        if (choice.equals("1")) {
-            System.out.print("Enter Primary Key: ");
-            int pk = Integer.parseInt(scanner.nextLine().trim());
-            Record r = activeTable.searchByPrimaryKey(pk);
-            if (r != null) {
-                System.out.println(r);
-            } else {
-                System.out.println("Not found.");
-            }
-        } else if (choice.equals("2")) {
-            System.out.print("Enter Column Name: ");
-            String colName = scanner.nextLine().trim();
-            System.out.print("Enter Value: ");
-            String val = scanner.nextLine().trim();
-
-            DataType type = null;
-            for (org.baddb.model.Column col : activeTable.getSchema().getColumns()) {
-                if (col.getName().equalsIgnoreCase(colName)) {
-                    type = col.getType();
-                    break;
+            System.out.println("Define columns (First column MUST be Primary Key of type INT):");
+            boolean first = true;
+            while (true) {
+                if (first) {
+                    System.out.println("Adding Primary Key column...");
+                } else {
+                    System.out.print("Add another column? (y/n): ");
+                    if (!scanner.nextLine().trim().equalsIgnoreCase("y")) {
+                        break;
+                    }
                 }
+                
+                System.out.print("Column Name: ");
+                String colName = scanner.nextLine().trim();
+                System.out.print("Column Type (INT, FLOAT, STRING, BOOLEAN): ");
+                String colType = scanner.nextLine().trim().toUpperCase();
+                
+                query.append(" ").append(colName).append(":").append(colType);
+                first = false;
             }
 
-            if (type == null) {
-                System.out.println("Column not found.");
+            parser.execute(query.toString());
+        } catch (Exception e) {
+            System.out.println("Error creating database: " + e.getMessage());
+        }
+    }
+
+    private static void menuOpenDatabase() {
+        try {
+            System.out.print("Enter database path: ");
+            String path = scanner.nextLine().trim();
+            if (path.isEmpty()) return;
+            parser.execute("OPEN " + path);
+        } catch (Exception e) {
+            System.out.println("Error opening database: " + e.getMessage());
+        }
+    }
+
+    private static void menuInsertRecord() {
+        try {
+            Schema schema = parser.getSchema();
+            if (schema == null) {
+                System.out.println("No active database. Open or create one first.");
                 return;
             }
 
-            Object parsedVal = parseValue(val, type);
-            List<Record> results = activeTable.select(colName, parsedVal);
-            for (Record r : results) {
-                System.out.println(r);
-            }
-            System.out.println("Total: " + results.size());
+            System.out.print("Use UPSERT instead of INSERT? (y/n): ");
+            boolean useUpsert = scanner.nextLine().trim().equalsIgnoreCase("y");
+            
+            StringBuilder query = new StringBuilder(useUpsert ? "UPSERT" : "INSERT");
 
-        } else if (choice.equals("3")) {
-            List<Record> results = activeTable.getAllRecords();
-            for (Record r : results) {
-                System.out.println(r);
+            System.out.println("Enter values for the record:");
+            for (Column col : schema.getColumns()) {
+                System.out.print(col.getName() + " (" + col.getType() + "): ");
+                String val = scanner.nextLine().trim();
+                if (val.isEmpty()) val = "null";
+                
+                // Quote strings if they contain spaces or are just raw strings
+                if (col.getType() == DataType.STRING && !val.equals("null") && !val.startsWith("\"")) {
+                    val = "\"" + val + "\"";
+                }
+                query.append(" ").append(val);
             }
-            System.out.println("Total: " + results.size());
+
+            parser.execute(query.toString());
+        } catch (Exception e) {
+            System.out.println("Error inserting record: " + e.getMessage());
+        }
+    }
+
+    private static void menuQueryRecords() {
+        try {
+            if (parser.getSchema() == null) {
+                System.out.println("No active database. Open or create one first.");
+                return;
+            }
+
+            System.out.println("1. Find by Primary Key (SEARCH)");
+            System.out.println("2. Select by Column Value (SELECT)");
+            System.out.println("3. View All Records (SELECT ALL)");
+            System.out.print("Choice: ");
+            String choice = scanner.nextLine().trim();
+
+            switch (choice) {
+                case "1":
+                    System.out.print("Enter Primary Key: ");
+                    String pk = scanner.nextLine().trim();
+                    if (pk.isEmpty()) return;
+                    parser.execute("SEARCH " + pk);
+                    break;
+                case "2":
+                    System.out.print("Enter Column Name: ");
+                    String colName = scanner.nextLine().trim();
+                    if (colName.isEmpty()) return;
+                    
+                    System.out.print("Enter Value: ");
+                    String val = scanner.nextLine().trim();
+                    if (val.isEmpty()) return;
+
+                    // Small helper to quote strings if needed
+                    boolean isString = false;
+                    for (Column c : parser.getSchema().getColumns()) {
+                        if (c.getName().equalsIgnoreCase(colName)) {
+                            isString = (c.getType() == DataType.STRING);
+                            break;
+                        }
+                    }
+                    if (isString && !val.startsWith("\"")) {
+                        val = "\"" + val + "\"";
+                    }
+
+                    parser.execute("SELECT " + colName + " " + val);
+                    break;
+                case "3":
+                    parser.execute("SELECT ALL");
+                    break;
+                default:
+                    System.out.println("Invalid choice.");
+            }
+        } catch (Exception e) {
+            System.out.println("Error querying records: " + e.getMessage());
         }
     }
 
     private static void runBQLMode() {
         System.out.println("--- BQL INTERACTIVE MODE ---");
         System.out.println("Type EXIT to return to Main Menu.");
-        BQLParser parser = new BQLParser();
-
-        // If we already have an active table, we could pass it to the parser
-        // But for simplicity of the isolated session, BQLParser has its own state.
         
         while (true) {
             System.out.print("bql> ");
             String bql = scanner.nextLine().trim();
             if (bql.isEmpty()) continue;
-            if (bql.toUpperCase().equals("EXIT")) {
-                if (parser.execute("CLOSE")) {} // safely close
+            if (bql.equalsIgnoreCase("EXIT")) {
                 break;
             }
-            parser.execute(bql);
-        }
-    }
-
-    private static Object parseValue(String val, DataType type) {
-        if (val.equalsIgnoreCase("null")) {
-            return null;
-        }
-        switch (type) {
-            case INT: return Integer.parseInt(val);
-            case FLOAT: return Float.parseFloat(val);
-            case BOOLEAN: return Boolean.parseBoolean(val);
-            case STRING: return val; // No quotes needed in GUI prompt mode
-            default: throw new IllegalArgumentException("Unsupported type: " + type);
+            try {
+                parser.execute(bql);
+            } catch (Exception e) {
+                System.out.println("BQL Execution Error: " + e.getMessage());
+            }
         }
     }
 }

@@ -10,6 +10,9 @@ public enum DataType {
     BOOLEAN;
 
     public static DataType fromOrdinal(int ordinal) {
+        if (ordinal < 0 || ordinal >= values().length) {
+            throw new IllegalArgumentException("Invalid DataType ordinal: " + ordinal);
+        }
         return values()[ordinal];
     }
 }
